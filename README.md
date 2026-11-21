@@ -10,7 +10,7 @@ A local, read-only dashboard add-on for [Postiz](https://postiz.com). It answers
 No build step, no npm dependencies. One Node.js process, one SQLite file.
 
 ```bash
-git clone https://github.com/<you>/postiz-lens && cd postiz-lens
+git clone https://github.com/TylonHH/postiz-lens && cd postiz-lens
 npm run demo      # explore with synthetic data, no Postiz needed
 ```
 
