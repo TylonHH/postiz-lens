@@ -1,0 +1,15 @@
+{
+  "name": "postiz-lens",
+  "version": "0.1.0",
+  "description": "Local dashboard for Postiz: every video, its performance, the local files behind it, and what got posted twice (or never).",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "sync": "node src/sync-cli.mjs",
+    "demo": "node src/server.mjs --demo",
+    "test": "node --test test/"
+  },
+  "keywords": ["postiz", "dashboard", "analytics", "social-media", "instagram", "reels"]
+}

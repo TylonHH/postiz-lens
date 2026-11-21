@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Postiz Lens</title>
+  <link rel="icon" href="logo.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <a class="brand" href="#/overview"><img src="logo.svg" alt=""><span>Lens<small>for Postiz</small></span></a>
+      <div class="side-label">Accounts</div>
+      <nav id="accounts" class="accounts"></nav>
+      <div class="side-foot" id="syncbox"></div>
+    </aside>
+    <main class="main">
+      <header class="top">
+        <nav class="tabs" id="tabs"></nav>
+        <input id="search" class="search" type="search" placeholder="Search captions and file names…" autocomplete="off">
+      </header>
+      <div id="view" class="view"></div>
+    </main>
+  </div>
+  <aside id="drawer" class="drawer" hidden></aside>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
