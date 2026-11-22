@@ -66,6 +66,22 @@ h1 { font-size: 26px; letter-spacing: -.02em; margin: 0 0 4px; }
 .chart text { fill: var(--muted); font-size: 11px; }
 .chart .grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
 .toggle.right { float: right; }
+.heatcard { margin-bottom: 18px; }
+.htoggle { display: inline-flex; gap: 2px; margin-left: 10px; }
+.htoggle.right { float: right; margin-left: 0; } .htoggle.dim { opacity: .35; pointer-events: none; }
+.htoggle button { background: none; border: 0; color: var(--muted); padding: 2px 8px; border-radius: 8px; font-size: 12px; text-transform: none; letter-spacing: 0; }
+.htoggle button.on { background: var(--panel-2); color: #fff; } .htoggle button:disabled { opacity: .35; cursor: not-allowed; }
+.insight { margin: 0 0 14px; color: #c9c8dc; } .insight b { color: #fff; }
+.heat { display: grid; grid-template-columns: 38px repeat(24, minmax(0, 1fr)); gap: 3px; align-items: center; }
+.heat .hl { font-size: 10px; color: var(--muted); text-align: left; } .heat .dl { font-size: 12px; color: var(--muted); }
+.hc { display: block; aspect-ratio: 1 / 1; border-radius: 5px; background: var(--panel-2); transition: transform .1s; } .hc:hover { transform: scale(1.25); position: relative; z-index: 1; outline: 1px solid #fff; }
+.hgrid { display: grid; grid-template-columns: 1fr 2fr; gap: 28px; margin-top: 22px; } @media (max-width: 900px) { .hgrid { grid-template-columns: 1fr; } }
+.hcap { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.hb { display: flex; align-items: flex-end; gap: 4px; height: 130px; }
+.hbc { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-width: 0; }
+.hbc i { display: block; width: 100%; border-radius: 5px 5px 2px 2px; background: linear-gradient(180deg, var(--aqua), var(--violet)); }
+.hbc span { font-size: 10px; color: var(--muted); height: 16px; line-height: 16px; white-space: nowrap; }
+.fine { margin: 14px 0 0; font-size: 11px; color: var(--muted); }
 .note { margin: -4px 0 8px; padding: 8px 12px; border-radius: 10px; font-size: 12px; color: var(--amber); background: rgba(251, 191, 36, .08); border: 1px solid rgba(251, 191, 36, .3); }
 .toplist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
 @media (max-width: 900px) { .toplist { grid-template-columns: 1fr; } }

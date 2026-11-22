@@ -71,6 +71,7 @@ function overview(model, q) {
       localFiles: scoped.length,
     },
     series: [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)),
+    points: published.map((p) => ({ d: p.publishDate, views: p.metrics.views, likes: p.metrics.likes, reach: p.metrics.reach })),
     top: [...published].sort((a, b) => (b.metrics.views ?? 0) - (a.metrics.views ?? 0)).slice(0, 5).map(slim),
   };
 }

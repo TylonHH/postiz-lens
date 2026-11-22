@@ -114,10 +114,13 @@ async function overview({ q }) {
       ${noMetrics ? '<p class="note">Postiz returned no views or likes for this selection, so the chart shows posts per day. The platform connection may lack insights access.</p>' : ''}
       <div id="chart"></div>
     </div>
+    <div class="card heatcard"><div id="heat"></div></div>
     <div class="card"><h3>Top videos</h3><div class="toplist">${d.top.length ? d.top.map((p, n) =>
       `<div class="toprow" data-post="${p.id}"><span class="rank">${n + 1}</span><span class="t">${esc(p.content.split('\n')[0])}</span><span class="vv">${num(p.metrics.views)}</span></div>`).join('') : '<div class="empty">No stats yet</div>'}</div></div>`;
   seriesData = d.series;
+  points = d.points;
   drawChart();
+  drawHeat();
   document.querySelectorAll('.toggle button').forEach((b) => b.addEventListener('click', () => {
     if (b.dataset.m) seriesMetric = b.dataset.m; else seriesRange = Number(b.dataset.r);
     document.querySelectorAll('.toggle button').forEach((x) => x.classList.toggle('on', x.dataset.m ? x.dataset.m === seriesMetric : Number(x.dataset.r) === seriesRange));
@@ -152,6 +155,62 @@ function drawChart() {
   const every = Math.ceil(data.length / Math.max(2, Math.floor((W - left) / 80)));
   const labels = data.map((d, n) => (n % every ? '' : `<text x="${left + n * step + step / 2}" y="${H - 8}" text-anchor="middle">${day(d.day)}</text>`)).join('');
   el.innerHTML = `<svg class="chart" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><defs><linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>${grid}${bars}${labels}</svg>`;
+}
+
+/* ---------- best times: weekday x hour ---------- */
+let points = [], heatMetric = 'views', heatAgg = 'avg';
+const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const HEAT_METRICS = [['views', 'Views'], ['likes', 'Likes'], ['reach', 'Reach'], ['posts', 'Posts']];
+const heatColor = (t) => `hsl(${262 - 77 * t} ${60 + 20 * t}% ${26 + 29 * t}%)`;
+
+function drawHeat() {
+  const el = $('#heat');
+  if (!el) return;
+  const metric = noMetrics ? 'posts' : heatMetric;
+  const cells = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({ n: 0, k: 0, sum: 0 })));
+  for (const p of points) {
+    const d = new Date(p.d);
+    const c = cells[(d.getDay() + 6) % 7][d.getHours()];
+    c.n++;
+    if (p[metric] != null) { c.k++; c.sum += p[metric]; }
+  }
+  const merge = (list) => list.reduce((a, c) => ({ n: a.n + c.n, k: a.k + c.k, sum: a.sum + c.sum }), { n: 0, k: 0, sum: 0 });
+  const val = (c) => (metric === 'posts' ? (c.n || null) : c.k ? (heatAgg === 'avg' ? c.sum / c.k : c.sum) : null);
+  const unit = metric === 'posts' ? 'posts' : `${heatAgg === 'avg' ? 'avg ' : 'total '}${metric}`;
+  const show = (c) => (val(c) == null ? 'no data' : `${num(Math.round(val(c)))} ${unit}`);
+  const byDay = DOW.map((_, d) => merge(cells[d]));
+  const byHour = Array.from({ length: 24 }, (_, h) => merge(cells.map((row) => row[h])));
+  const max = Math.max(0, ...cells.flat().map((c) => val(c) ?? 0));
+  const best = (list, minK) => list.map((c, i) => ({ c, i })).filter(({ c }) => val(c) != null && (metric === 'posts' || heatAgg === 'total' || c.k >= minK))
+    .sort((a, b) => val(b.c) - val(a.c))[0];
+  const bestOf = (list) => best(list, 2) ?? best(list, 1);
+  const bd = bestOf(byDay), bh = bestOf(byHour);
+  const bs = bestOf(cells.flat());
+  const slot = bs && `${DOW[Math.floor(bs.i / 24)]} ${String(bs.i % 24).padStart(2, '0')}:00`;
+  const insight = [bd && `Best day <b>${DOW[bd.i]}</b>`, bh && `Best hour <b>${String(bh.i).padStart(2, '0')}:00</b>`, bs && `Best slot <b>${slot}</b> (${metric === 'posts' ? show(bs.c) : `${show(bs.c)}, ${bs.c.n} post${bs.c.n > 1 ? 's' : ''}`})`].filter(Boolean).join(' · ');
+
+  const grid = ['<span></span>', ...Array.from({ length: 24 }, (_, h) => `<span class="hl">${h % 3 ? '' : String(h).padStart(2, '0')}</span>`),
+    ...DOW.flatMap((name, d) => [`<span class="dl">${name}</span>`, ...cells[d].map((c, h) => {
+      const v = val(c);
+      const style = v == null ? (c.n ? 'background:#2a2a40' : '') : `background:${heatColor(max ? v / max : 0)}`;
+      return `<i class="hc" style="${style}" title="${name} ${String(h).padStart(2, '0')}:00 · ${c.n} post${c.n === 1 ? '' : 's'} · ${show(c)}"></i>`;
+    })])].join('');
+  const bars = (list, labels, every) => {
+    const top = Math.max(0, ...list.map((c) => val(c) ?? 0));
+    return `<div class="hb">${list.map((c, i) => `<div class="hbc" title="${labels[i]} · ${c.n} post${c.n === 1 ? '' : 's'} · ${show(c)}"><i style="height:${top && val(c) ? Math.max(3, (val(c) / top) * 100) : 0}%"></i><span>${i % every ? '' : labels[i]}</span></div>`).join('')}</div>`;
+  };
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  el.innerHTML = `
+    <h3>Best times to post
+      <span class="htoggle">${HEAT_METRICS.map(([k, l]) => `<button data-hm="${k}" class="${k === metric ? 'on' : ''}" ${noMetrics && k !== 'posts' ? 'disabled' : ''}>${l}</button>`).join('')}</span>
+      <span class="htoggle right ${metric === 'posts' ? 'dim' : ''}">${[['avg', 'Avg per post'], ['total', 'Total']].map(([k, l]) => `<button data-ha="${k}" class="${k === heatAgg ? 'on' : ''}">${l}</button>`).join('')}</span></h3>
+    ${points.length ? `<p class="insight">${insight || 'Not enough data yet.'}</p>
+      <div class="heat">${grid}</div>
+      <div class="hgrid"><div><div class="hcap">By weekday</div>${bars(byDay, DOW, 1)}</div><div><div class="hcap">By hour</div>${bars(byHour, byHour.map((_, h) => String(h).padStart(2, '0')), 3)}</div></div>
+      <p class="fine">Published posts only, in your time zone (${esc(tz)}). Averages count posts that have stats; hover a cell for the sample size.</p>`
+      : '<div class="empty">No published posts yet</div>'}`;
+  el.querySelectorAll('[data-hm]').forEach((b) => b.addEventListener('click', () => { heatMetric = b.dataset.hm; drawHeat(); }));
+  el.querySelectorAll('[data-ha]').forEach((b) => b.addEventListener('click', () => { heatAgg = b.dataset.ha; drawHeat(); }));
 }
 
 /* ---------- posts ---------- */
