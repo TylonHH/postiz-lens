@@ -82,11 +82,16 @@ const chips = (items, active, make) => items.map(([value, label, cls = '']) =>
   `<a class="chip ${cls} ${active === value ? 'on' : ''}" href="${make(value)}">${label}</a>`).join('');
 
 /* ---------- overview ---------- */
-let seriesMetric = 'views';
+let seriesMetric = 'views', noMetrics = false, autoPosts = false;
 async function overview({ q }) {
   const account = q.get('account') ?? '';
   const d = await api(`/api/overview?account=${account}`);
   const t = d.totals, i = d.issues;
+  const hasViews = d.series.some((s) => s.views > 0);
+  noMetrics = !hasViews;
+  if (!hasViews && seriesMetric !== 'posts') seriesMetric = 'posts';
+  else if (hasViews && seriesMetric === 'posts' && autoPosts) seriesMetric = 'views';
+  autoPosts = !hasViews;
   const kpi = (v, l, hero) => `<div class="card kpi ${hero ? 'hero' : ''}"><div class="v">${num(v)}</div><div class="l">${l}</div></div>`;
   const issue = (n, title, hint, href, level) =>
     `<a class="card issue ${n === 0 ? 'zero' : level}" href="${href}"><span class="n">${n}</span><span><b>${title}</b><span>${hint}</span></span></a>`;
@@ -104,8 +109,9 @@ async function overview({ q }) {
     </div>
     <div class="card chartcard">
       <h3>Performance by publish day
-        <span class="toggle">${['views', 'likes'].map((m) => `<button data-m="${m}" class="${m === seriesMetric ? 'on' : ''}">${m}</button>`).join('')}</span>
+        <span class="toggle">${['views', 'likes', 'posts'].map((m) => `<button data-m="${m}" class="${m === seriesMetric ? 'on' : ''}">${m}</button>`).join('')}</span>
         <span class="toggle right">${[[30, '30 d'], [90, '90 d'], [0, 'All']].map(([r, l]) => `<button data-r="${r}" class="${r === seriesRange ? 'on' : ''}">${l}</button>`).join('')}</span></h3>
+      ${noMetrics ? '<p class="note">Postiz returned no views or likes for this selection, so the chart shows posts per day. The platform connection may lack insights access.</p>' : ''}
       <div id="chart"></div>
     </div>
     <div class="card"><h3>Top videos</h3><div class="toplist">${d.top.length ? d.top.map((p, n) =>
@@ -129,11 +135,15 @@ function drawChart() {
   const data = seriesData.filter((d) => d.day >= cutoff);
   if (!data.length) { el.innerHTML = '<div class="empty">No published posts in this range</div>'; return; }
   const W = Math.max(320, el.clientWidth), H = 340, left = 46, right = 12, top = 12, bottom = 28;
-  const max = Math.max(1, ...data.map((d) => d[seriesMetric]));
+  const rawMax = Math.max(1, ...data.map((d) => d[seriesMetric]));
+  const unit = 10 ** Math.floor(Math.log10(rawMax / 4)), f = rawMax / 4 / unit;
+  const stepSize = Math.max(1, (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * unit);
+  const max = stepSize * Math.ceil(rawMax / stepSize);
   const step = (W - left - right) / data.length;
   const bw = Math.min(34, Math.max(3, step * 0.72));
   const y = (v) => top + (1 - v / max) * (H - top - bottom);
-  const grid = [0, 0.25, 0.5, 0.75, 1].map((f) => `<line x1="${left}" x2="${W - right}" y1="${y(max * f)}" y2="${y(max * f)}" class="grid"/><text x="${left - 8}" y="${y(max * f) + 3}" text-anchor="end">${num(Math.round(max * f))}</text>`).join('');
+  const grid = Array.from({ length: Math.round(max / stepSize) + 1 }, (_, n) => n * stepSize).map((v) =>
+    `<line x1="${left}" x2="${W - right}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${left - 8}" y="${y(v) + 3}" text-anchor="end">${num(v)}</text>`).join('');
   const bars = data.map((d, n) => {
     const x = left + n * step + (step - bw) / 2;
     const h = Math.max(2, (H - top - bottom) * (d[seriesMetric] / max));
