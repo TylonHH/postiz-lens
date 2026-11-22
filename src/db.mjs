@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS files (
   path TEXT PRIMARY KEY, root TEXT, kind TEXT, size INTEGER, mtime INTEGER, sha256 TEXT, seen_at TEXT
 );
 CREATE INDEX IF NOT EXISTS files_size ON files(size);
+CREATE TABLE IF NOT EXISTS file_scopes (
+  path TEXT NOT NULL, account TEXT NOT NULL, PRIMARY KEY (path, account)
+);
 CREATE TABLE IF NOT EXISTS remote_media (
   url TEXT PRIMARY KEY, size INTEGER, sha256 TEXT
 );

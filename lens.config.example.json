@@ -1,0 +1,20 @@
+{
+  "exclude": ["node_modules", "_probe", "tmp", "**/build", "*.proxy.mp4"],
+
+  "folders": [
+    "D:/Videos/shared-footage"
+  ],
+
+  "accounts": {
+    "mychannel@instagram-standalone": {
+      "folders": [
+        "D:/Videos/instagram",
+        { "path": "D:/Videos/campaigns", "recursive": true, "include": ["**/out/*.mp4"], "exclude": ["raw", "**/drafts"] },
+        { "path": "D:/Videos/top-level-only", "recursive": false }
+      ]
+    },
+    "myotherchannel": {
+      "folders": ["D:/Videos/tiktok"]
+    }
+  }
+}

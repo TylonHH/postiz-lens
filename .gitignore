@@ -3,6 +3,7 @@ data/
 .env
 .env.*
 !.env.example
+lens.config.json
 *.db
 *.db-wal
 *.db-shm

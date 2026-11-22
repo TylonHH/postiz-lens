@@ -27,10 +27,40 @@ npm start                # http://127.0.0.1:4747
 | --- | --- |
 | `POSTIZ_API_URL` | `https://api.postiz.com` for Postiz Cloud, `https://your-domain/api` when self-hosted |
 | `POSTIZ_API_KEY` | Postiz → Settings → Developers |
-| `LOCAL_MEDIA_DIRS` | Folders with your source videos/images, separated by `;` (Windows) or `:` (macOS/Linux) |
+| `LOCAL_MEDIA_DIRS` | Quick start: folders shared by all accounts, separated by `;` (Windows) or `:` (macOS/Linux). For anything more, use `lens.config.json` |
 | `SYNC_INTERVAL_MIN` | Refresh interval, default 60 |
+| `CONFIG_PATH` | Folder config, default `./lens.config.json` |
 
 Values are read from the environment first and from `.env` second. On Windows, user-level environment variables are used as a fallback.
+
+### Local folders per account
+
+Copy `lens.config.example.json` to `lens.config.json`. Each account can have several folders, each with its own options:
+
+```json
+{
+  "exclude": ["_probe", "tmp", "**/build"],
+  "folders": ["D:/Videos/shared-footage"],
+  "accounts": {
+    "mychannel@instagram-standalone": {
+      "folders": [
+        "D:/Videos/instagram",
+        { "path": "D:/Videos/campaigns", "include": ["**/out/*.mp4"], "exclude": ["raw"] },
+        { "path": "D:/Videos/top-level-only", "recursive": false }
+      ]
+    }
+  }
+}
+```
+
+- **Account key:** a channel id, `profile@provider` (e.g. `mychannel@instagram-standalone`), or just a profile name (matches every channel with that profile).
+- **`recursive`:** scan subfolders, default `true`. Set `false` for the top level only.
+- **`exclude`:** folders or files to skip. Top-level `exclude` applies everywhere, per-folder `exclude` adds to it.
+- **`include`:** optional. When set, only files matching one of the patterns are indexed.
+- **Patterns** work like `.gitignore`: `build` matches any file or folder with that name, `**/out/*.mp4` is relative to the configured folder, `D:/videos/raw` is an absolute path. Use forward slashes.
+- **Effect on the dashboard:** a file only counts as "never posted" for the accounts whose folders contain it. Folders under the top-level `folders` list (or `LOCAL_MEDIA_DIRS`) belong to no account and count for all of them. A file can be listed under several accounts.
+
+Matching a post to its source file does not depend on folders: any indexed file with the same content hash matches.
 
 `npm run sync` runs one sync from the command line. `npm test` runs the unit tests.
 
@@ -38,7 +68,7 @@ Values are read from the environment first and from `.env` second. On Windows, u
 
 1. **Sync** pulls channels and posts through the Postiz public API (`/integrations`, `/posts`), then fetches each post's media and follow-up comments.
 2. **Stats** are requested from `/analytics/post/{id}` for published posts. The values are cumulative, so Lens stores a snapshot per run and builds the history itself. Fresh posts are re-measured every 6 hours, posts under 30 days old daily, older ones weekly.
-3. **Local files** under `LOCAL_MEDIA_DIRS` are indexed. A local file is SHA-256 hashed only when a Postiz upload has exactly the same byte size, and an upload is downloaded and hashed only when its size collides with another upload or a local file. That keeps large libraries cheap, and progress is saved, so an interrupted first sync resumes where it stopped.
+3. **Local files** in your configured folders are indexed. A local file is SHA-256 hashed only when a Postiz upload has exactly the same byte size, and an upload is downloaded and hashed only when its size collides with another upload or a local file. That keeps large libraries cheap, and progress is saved, so an interrupted first sync resumes where it stopped.
 4. **Analysis** runs on every request over the local database:
    - *Duplicate*: the same file is live or scheduled more than once on the same account. Failed posts and drafts do not count.
    - *Cross-post*: the same file on different accounts. Informational.
@@ -52,13 +82,14 @@ Posts that disappear from Postiz are hidden from the dashboard on the next sync.
 - Metrics depend on the platform; Lens shows whatever Postiz returns and `–` otherwise.
 - A re-encoded or edited file has a different hash and will not match its original. Matching is exact on purpose.
 - The post detail call (`/public/posts/{id}`) is not in the published OpenAPI spec but is what the Postiz app uses to expose media and comments. If it ever changes, Lens still lists posts, but without media matching.
+- Lens is meant to run on the machine that holds your video files. Hosting it on a server (for example CapRover) only makes sense if that server can read the same folders.
 - Postiz rate limits are respected: `429` responses are retried after `Retry-After`, and analytics calls per sync are capped (`MAX_STATS_PER_SYNC`).
 
 ## Privacy and security
 
 - Read-only. Lens never creates, edits or deletes anything in Postiz.
 - Your API key stays on your machine, in `.env` or the environment, and is only sent to your Postiz instance.
-- The server binds to `127.0.0.1` by default. It has **no authentication**, so do not expose it publicly. Local files are only served if they were indexed from `LOCAL_MEDIA_DIRS`.
+- The server binds to `127.0.0.1` by default. It has **no authentication**, so do not expose it publicly. Local files are only served if they were indexed from your configured folders.
 - The database lives in `./data/` and is git-ignored.
 
 ## Project layout
@@ -67,6 +98,7 @@ Posts that disappear from Postiz are hidden from the dashboard on the next sync.
 src/postiz.mjs    Postiz API client
 src/sync.mjs      sync pipeline (channels, posts, details, files, stats)
 src/files.mjs     local scan and hashing
+src/glob.mjs      include/exclude patterns
 src/analyze.mjs   matching, duplicates, metrics (pure functions, tested)
 src/server.mjs    HTTP API and static files
 public/           the dashboard (vanilla JS, no build)

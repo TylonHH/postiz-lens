@@ -102,27 +102,46 @@ async function overview({ q }) {
       ${issue(i.sameCaption, 'Reused captions', 'Different video, same text', A({ flag: 'same-caption' }), 'warn')}
       ${issue(i.noStats, 'Published without stats', 'Postiz returned no metrics (new post or channel lacks insights access)', A({ flag: 'no-stats' }), 'warn')}
     </div>
-    <div class="grid2">
-      <div class="card"><h3>Performance by publish day <span class="toggle">${['views', 'likes'].map((m) => `<button data-m="${m}" class="${m === seriesMetric ? 'on' : ''}">${m}</button>`).join('')}</span></h3>${chart(d.series)}</div>
-      <div class="card"><h3>Top videos</h3>${d.top.length ? d.top.map((p, n) =>
-        `<div class="toprow" data-post="${p.id}"><span class="rank">${n + 1}</span><span class="t">${esc(p.content.split('\n')[0])}</span><span class="vv">${num(p.metrics.views)}</span></div>`).join('') : '<div class="empty">No stats yet</div>'}</div>
-    </div>`;
-  document.querySelectorAll('.toggle button').forEach((b) => b.addEventListener('click', () => { seriesMetric = b.dataset.m; overview({ q }); }));
+    <div class="card chartcard">
+      <h3>Performance by publish day
+        <span class="toggle">${['views', 'likes'].map((m) => `<button data-m="${m}" class="${m === seriesMetric ? 'on' : ''}">${m}</button>`).join('')}</span>
+        <span class="toggle right">${[[30, '30 d'], [90, '90 d'], [0, 'All']].map(([r, l]) => `<button data-r="${r}" class="${r === seriesRange ? 'on' : ''}">${l}</button>`).join('')}</span></h3>
+      <div id="chart"></div>
+    </div>
+    <div class="card"><h3>Top videos</h3><div class="toplist">${d.top.length ? d.top.map((p, n) =>
+      `<div class="toprow" data-post="${p.id}"><span class="rank">${n + 1}</span><span class="t">${esc(p.content.split('\n')[0])}</span><span class="vv">${num(p.metrics.views)}</span></div>`).join('') : '<div class="empty">No stats yet</div>'}</div></div>`;
+  seriesData = d.series;
+  drawChart();
+  document.querySelectorAll('.toggle button').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.m) seriesMetric = b.dataset.m; else seriesRange = Number(b.dataset.r);
+    document.querySelectorAll('.toggle button').forEach((x) => x.classList.toggle('on', x.dataset.m ? x.dataset.m === seriesMetric : Number(x.dataset.r) === seriesRange));
+    drawChart();
+  }));
 }
 
-function chart(series) {
-  const data = series.slice(-60);
-  if (!data.length) return '<div class="empty">No published posts yet</div>';
-  const W = 800, H = 230, pad = 28, max = Math.max(1, ...data.map((d) => d[seriesMetric]));
-  const bw = (W - pad * 2) / data.length;
+let seriesData = [], seriesRange = 90;
+window.addEventListener('resize', () => drawChart());
+
+function drawChart() {
+  const el = $('#chart');
+  if (!el) return;
+  const cutoff = seriesRange ? new Date(Date.now() - seriesRange * 86400_000).toISOString().slice(0, 10) : '';
+  const data = seriesData.filter((d) => d.day >= cutoff);
+  if (!data.length) { el.innerHTML = '<div class="empty">No published posts in this range</div>'; return; }
+  const W = Math.max(320, el.clientWidth), H = 340, left = 46, right = 12, top = 12, bottom = 28;
+  const max = Math.max(1, ...data.map((d) => d[seriesMetric]));
+  const step = (W - left - right) / data.length;
+  const bw = Math.min(34, Math.max(3, step * 0.72));
+  const y = (v) => top + (1 - v / max) * (H - top - bottom);
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((f) => `<line x1="${left}" x2="${W - right}" y1="${y(max * f)}" y2="${y(max * f)}" class="grid"/><text x="${left - 8}" y="${y(max * f) + 3}" text-anchor="end">${num(Math.round(max * f))}</text>`).join('');
   const bars = data.map((d, n) => {
-    const h = Math.max(2, (d[seriesMetric] / max) * (H - pad * 2));
-    return `<rect class="bar" x="${pad + n * bw + bw * 0.15}" y="${H - pad - h}" width="${bw * 0.7}" height="${h}" rx="3"><title>${day(d.day)}: ${num(d[seriesMetric])} ${seriesMetric} (${d.posts} post${d.posts > 1 ? 's' : ''})</title></rect>`;
+    const x = left + n * step + (step - bw) / 2;
+    const h = Math.max(2, (H - top - bottom) * (d[seriesMetric] / max));
+    return `<rect class="bar" x="${x}" y="${H - bottom - h}" width="${bw}" height="${h}" rx="${Math.min(5, bw / 2)}"><title>${day(d.day)}: ${num(d[seriesMetric])} ${seriesMetric} · ${d.posts} post${d.posts > 1 ? 's' : ''}</title></rect>`;
   }).join('');
-  const every = Math.ceil(data.length / 8);
-  const labels = data.map((d, n) => (n % every ? '' : `<text x="${pad + n * bw}" y="${H - 8}">${day(d.day)}</text>`)).join('');
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs><linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
-    <text x="${pad}" y="14">${num(max)}</text>${bars}${labels}</svg>`;
+  const every = Math.ceil(data.length / Math.max(2, Math.floor((W - left) / 80)));
+  const labels = data.map((d, n) => (n % every ? '' : `<text x="${left + n * step + step / 2}" y="${H - 8}" text-anchor="middle">${day(d.day)}</text>`)).join('');
+  el.innerHTML = `<svg class="chart" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><defs><linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>${grid}${bars}${labels}</svg>`;
 }
 
 /* ---------- posts ---------- */

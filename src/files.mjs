@@ -1,31 +1,41 @@
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
-import { extname, join } from 'node:path';
+import { extname, join, relative } from 'node:path';
 import { all, run } from './db.mjs';
+import { matchesAny } from './glob.mjs';
 
 export const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.webm']);
 export const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const SKIP_DIRS = new Set(['node_modules', '.git', '$RECYCLE.BIN', 'System Volume Information']);
 
-async function* walk(dir) {
+async function* walk(folder, dir = folder.path) {
   let entries;
   try { entries = await readdir(dir, { withFileTypes: true }); } catch { return; }
   for (const e of entries) {
-    if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) yield* walk(join(dir, e.name)); }
-    else if (e.isFile()) yield join(dir, e.name);
+    const abs = join(dir, e.name);
+    const target = { abs, rel: relative(folder.path, abs), name: e.name };
+    if (matchesAny(folder.exclude, target)) continue;
+    if (e.isDirectory()) {
+      if (folder.recursive && !SKIP_DIRS.has(e.name)) yield* walk(folder, abs);
+    } else if (e.isFile() && (!folder.include.length || matchesAny(folder.include, target))) yield abs;
   }
 }
 
-export async function scanLocalFiles(db, dirs) {
+export async function scanLocalFiles(db, folders) {
   const started = new Date().toISOString();
   const known = new Map(all(db, 'SELECT path, size, mtime FROM files').map((f) => [f.path, f]));
+  run(db, 'DELETE FROM file_scopes');
+  const seen = new Set();
   let count = 0;
-  for (const root of dirs) {
-    for await (const path of walk(root)) {
+  for (const folder of folders) {
+    const root = folder.path;
+    for await (const path of walk(folder)) {
       const ext = extname(path).toLowerCase();
       const kind = VIDEO_EXT.has(ext) ? 'video' : IMAGE_EXT.has(ext) ? 'image' : null;
       if (!kind) continue;
+      run(db, 'INSERT OR IGNORE INTO file_scopes (path, account) VALUES (?, ?)', path, folder.account);
+      seen.add(path);
       const s = await stat(path);
       const mtime = Math.floor(s.mtimeMs);
       const prev = known.get(path);
@@ -39,7 +49,7 @@ export async function scanLocalFiles(db, dirs) {
       count++;
     }
   }
-  run(db, 'DELETE FROM files WHERE seen_at < ?', started);
+  for (const path of known.keys()) if (!seen.has(path)) run(db, 'DELETE FROM files WHERE path = ?', path);
   return count;
 }
 

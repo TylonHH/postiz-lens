@@ -5,7 +5,7 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.mjs';
 import { openDb } from './db.mjs';
-import { analyze, fileId, fileStatus, loadRaw } from './analyze.mjs';
+import { analyze, fileId, fileStatus, inScope, loadRaw } from './analyze.mjs';
 import { createClient } from './postiz.mjs';
 import { lastSync, runSync, syncStatus } from './sync.mjs';
 
@@ -52,7 +52,9 @@ function overview(model, q) {
     byDay.set(day, d);
   }
   const flagCount = (f) => posts.filter((p) => p.flags.includes(f)).length;
-  const fileRows = model.files.map((f) => ({ f, s: fileStatus(f, q.get('account')) }));
+  const account = q.get('account');
+  const scoped = model.files.filter((f) => inScope(f, account));
+  const fileRows = scoped.map((f) => ({ f, s: fileStatus(f, account) }));
   return {
     totals: {
       posts: posts.length, published: published.length,
@@ -66,7 +68,7 @@ function overview(model, q) {
       noLocalFile: flagCount('no-local-file'), noStats: flagCount('no-stats'),
       unpostedFiles: fileRows.filter((r) => r.s.status === 'unposted').length,
       multiFiles: fileRows.filter((r) => r.s.multi).length,
-      localFiles: model.files.length,
+      localFiles: scoped.length,
     },
     series: [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)),
     top: [...published].sort((a, b) => (b.metrics.views ?? 0) - (a.metrics.views ?? 0)).slice(0, 5).map(slim),
@@ -96,7 +98,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/state') {
       const model = analyze(loadRaw(db));
       return json(res, {
-        demo: cfg.demo, canSync: !!client, mediaDirs: cfg.mediaDirs.length, lastSync: lastSync(db), sync: syncStatus(),
+        demo: cfg.demo, canSync: !!client, mediaDirs: cfg.folders.length, lastSync: lastSync(db), sync: syncStatus(),
         accounts: model.accounts.map((a) => ({ id: a.id, name: a.name, profile: a.profile, provider: a.provider, picture: a.picture,
           posts: model.posts.filter((p) => p.accountId === a.id).length })).filter((a) => a.posts || !cfg.demo),
       });
@@ -121,7 +123,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/files') {
       const model = analyze(loadRaw(db));
       const account = q.get('account'), status = q.get('status'), needle = q.get('q')?.toLowerCase();
-      const rows = model.files.map((f) => ({ ...f, ...fileStatus(f, account) }))
+      const rows = model.files.filter((f) => inScope(f, account)).map((f) => ({ ...f, ...fileStatus(f, account) }))
         .filter((f) => (!status || (status === 'multi' ? f.multi : f.status === status)) && (!needle || f.path.toLowerCase().includes(needle)))
         .sort((a, b) => b.mtime - a.mtime);
       return json(res, { total: rows.length, files: rows.slice(0, Number(q.get('limit') ?? 400)) });

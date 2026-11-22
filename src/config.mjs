@@ -19,15 +19,43 @@ function windowsUserVar(name) {
   } catch { return undefined; }
 }
 
+const list = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+
+/**
+ * Turns the folder settings into one flat list. `account` is '*' for folders that belong to no
+ * particular channel, otherwise the key the user wrote (channel id, "profile@provider" or "profile").
+ */
+export function normalizeFolders(fileConfig, envDirs) {
+  const globalExclude = list(fileConfig.exclude);
+  const out = [];
+  const add = (entry, account) => {
+    const o = typeof entry === 'string' ? { path: entry } : entry;
+    if (!o?.path) return;
+    out.push({
+      path: resolve(o.path), account,
+      recursive: o.recursive !== false,
+      include: list(o.include),
+      exclude: [...globalExclude, ...list(o.exclude)],
+    });
+  };
+  envDirs.forEach((d) => add(d, '*'));
+  list(fileConfig.folders).forEach((f) => add(f, '*'));
+  for (const [account, value] of Object.entries(fileConfig.accounts ?? {})) list(value.folders).forEach((f) => add(f, account));
+  return out;
+}
+
 export function loadConfig(argv = process.argv.slice(2)) {
   loadDotenv(resolve('.env'));
   const env = (name, fallback) => process.env[name] ?? windowsUserVar(name) ?? fallback;
   const demo = argv.includes('--demo') || env('DEMO') === '1';
+  const configPath = resolve(env('CONFIG_PATH', 'lens.config.json'));
+  const fileConfig = !demo && existsSync(configPath) ? JSON.parse(readFileSync(configPath, 'utf8')) : {};
+  const envDirs = (env('LOCAL_MEDIA_DIRS', '') || '').split(delimiter).map((s) => s.trim()).filter(Boolean);
   return {
     demo,
     apiUrl: env('POSTIZ_API_URL', 'https://api.postiz.com'),
     apiKey: env('POSTIZ_API_KEY'),
-    mediaDirs: (env('LOCAL_MEDIA_DIRS', '') || '').split(delimiter).map((s) => s.trim()).filter(Boolean),
+    folders: demo ? [] : normalizeFolders(fileConfig, envDirs),
     host: env('HOST', '127.0.0.1'),
     port: Number(env('PORT', 4747)),
     dbPath: resolve(env('DB_PATH', demo ? './data/demo.db' : './data/lens.db')),

@@ -94,7 +94,7 @@ async function syncStats(ctx) {
 
 async function syncFiles(ctx) {
   const { db, cfg } = ctx;
-  const scanned = cfg.mediaDirs.length ? await scanLocalFiles(db, cfg.mediaDirs) : 0;
+  const scanned = cfg.folders.length ? await scanLocalFiles(db, cfg.folders) : 0;
   const urls = new Set();
   for (const p of all(db, 'SELECT media FROM posts WHERE deleted = 0 AND media IS NOT NULL')) {
     for (const m of parse(p.media, [])) if (m.path) urls.add(m.path);

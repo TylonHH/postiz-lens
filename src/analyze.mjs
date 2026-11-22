@@ -11,6 +11,7 @@ export function loadRaw(db) {
     integrations: all(db, 'SELECT * FROM integrations'),
     posts: all(db, 'SELECT * FROM posts WHERE deleted = 0'),
     files: all(db, 'SELECT * FROM files'),
+    scopes: all(db, 'SELECT * FROM file_scopes'),
     remote: all(db, 'SELECT * FROM remote_media'),
     stats: all(db, `SELECT * FROM stats WHERE label != '_probe' ORDER BY taken_at`),
   };
@@ -28,6 +29,27 @@ function pickMetrics(rows) {
   }
   return out;
 }
+
+const bare = (s) => String(s ?? '').replace(/^@/, '').toLowerCase();
+
+// An account key is a channel id, "profile@provider", or just a profile (all channels with that profile).
+export function accountIdsForKey(key, integrations) {
+  const k = bare(key);
+  const byId = integrations.filter((i) => i.id === key);
+  if (byId.length) return byId.map((i) => i.id);
+  const [profile, provider] = k.split('@').length === 2 && key.indexOf('@') > 0 ? k.split('@') : [k, null];
+  return integrations
+    .filter((i) => (bare(i.profile) === profile || bare(i.name) === profile) && (!provider || i.provider === provider))
+    .map((i) => i.id);
+}
+
+// null = file is not tied to a channel and counts for every account.
+function resolveScope(keys, integrations) {
+  if (!keys || keys.has('*')) return null;
+  return [...new Set([...keys].flatMap((k) => accountIdsForKey(k, integrations)))];
+}
+
+export const inScope = (file, accountId) => !accountId || file.scope === null || file.scope.includes(accountId);
 
 /** Pure function: raw DB rows in, dashboard model out. */
 export function analyze(raw) {
@@ -83,9 +105,12 @@ export function analyze(raw) {
     if (p.media.length && !p.localFiles.length) p.flags.push('no-local-file');
   }
 
+  const scopeKeys = new Map();
+  for (const s of raw.scopes ?? []) (scopeKeys.get(s.path) ?? scopeKeys.set(s.path, new Set()).get(s.path)).add(s.account);
   const files = raw.files.map((f) => ({
     id: fileId(f.path), path: f.path, root: f.root, kind: f.kind, size: f.size, mtime: f.mtime,
     posts: f.sha256 ? posts.filter((p) => p.media.some((m) => m.sha === f.sha256)) : [],
+    scope: resolveScope(scopeKeys.get(f.path), raw.integrations),
   }));
   return { accounts: [...accounts.values()], posts, files };
 }

@@ -61,15 +61,20 @@ h1 { font-size: 26px; letter-spacing: -.02em; margin: 0 0 4px; }
 .issue b { display: block; } .issue span { color: var(--muted); font-size: 12px; }
 .issue.zero .n { color: var(--green); } .issue.warn .n { color: var(--amber); } .issue.bad .n { color: var(--red); }
 
-.chart { width: 100%; height: 230px; }
-.chart text { fill: var(--muted); font-size: 10px; }
+.chartcard { margin-bottom: 18px; }
+.chart { display: block; width: 100%; }
+.chart text { fill: var(--muted); font-size: 11px; }
+.chart .grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
+.toggle.right { float: right; }
+.toplist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
+@media (max-width: 900px) { .toplist { grid-template-columns: 1fr; } }
 .bar { fill: url(#barGrad); transition: opacity .15s; } .bar:hover { opacity: .7; }
 .toggle { display: inline-flex; gap: 2px; margin-left: 10px; }
 .toggle button { background: none; border: 0; color: var(--muted); padding: 2px 8px; border-radius: 8px; font-size: 12px; text-transform: none; letter-spacing: 0; }
 .toggle button.on { background: var(--panel-2); color: #fff; }
 
 .toprow { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); cursor: pointer; }
-.toprow:first-of-type { border-top: 0; }
+.toprow:nth-child(-n+2) { border-top: 0; }
 .toprow .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .toprow .vv { font-weight: 700; font-variant-numeric: tabular-nums; }
 .rank { width: 24px; height: 24px; border-radius: 8px; background: var(--panel-2); display: grid; place-items: center; font-size: 12px; font-weight: 700; color: var(--muted); }
