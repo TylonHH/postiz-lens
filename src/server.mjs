@@ -27,6 +27,46 @@ if (cfg.demo) {
 const sum = (list, key) => list.reduce((n, p) => n + (p.metrics[key] ?? 0), 0);
 const slim = ({ history, media, ...p }) => ({ ...p, media: media.map((m) => ({ url: m.url, localId: m.files[0] ? fileId(m.files[0].path) : null })) });
 
+const API_INDEX = {
+  name: 'Postiz Lens API (read-only)',
+  endpoints: {
+    'GET /api/stats': 'Metric history. Params: account (channel id), state (default PUBLISHED), from, to (YYYY-MM-DD, applies to snapshot date), q, flag, format=json|csv, view=posts|snapshots|daily',
+    'GET /api/posts': 'Posts with latest metrics, flags and local files. Params: account, state, flag, q, sort=date|views, limit',
+    'GET /api/posts/{id}': 'One post: caption, comments, media, metric history, duplicates',
+    'GET /api/files': 'Local files and where they were posted. Params: account, status=published|scheduled|draft|error|unposted|multi, q',
+    'GET /api/overview': 'Totals, issue counts, per-day series, top videos. Param: account',
+    'GET /api/state': 'Accounts (ids for the account param) and last sync',
+  },
+  metrics: 'Cumulative values per snapshot: views, reach, likes, comments, shares, saves. Missing = null (platform returned nothing).',
+};
+
+const pivot = (history) => {
+  const byTime = new Map();
+  for (const h of history) {
+    const row = byTime.get(h.at) ?? { at: h.at };
+    row[h.label.toLowerCase()] = h.value;
+    byTime.set(h.at, row);
+  }
+  return [...byTime.values()];
+};
+
+// Sum of every post's latest known value on each day (cumulative totals over time).
+function dailyTotals(snapshots) {
+  const days = [...new Set(snapshots.map((s) => s.snapshot_at.slice(0, 10)))].sort();
+  const byPost = new Map();
+  for (const s of snapshots) (byPost.get(s.post_id) ?? byPost.set(s.post_id, []).get(s.post_id)).push(s);
+  return days.map((day) => {
+    const row = { day, posts_measured: 0, views: 0, reach: 0, likes: 0, comments: 0, shares: 0, saves: 0 };
+    for (const list of byPost.values()) {
+      const last = list.filter((s) => s.snapshot_at.slice(0, 10) <= day).at(-1);
+      if (!last) continue;
+      row.posts_measured++;
+      for (const k of ['views', 'reach', 'likes', 'comments', 'shares', 'saves']) row[k] += last[k] ?? 0;
+    }
+    return row;
+  });
+}
+
 function json(res, data, status = 200) {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(data));
@@ -128,6 +168,32 @@ const server = createServer(async (req, res) => {
         .filter((f) => (!status || (status === 'multi' ? f.multi : f.status === status)) && (!needle || f.path.toLowerCase().includes(needle)))
         .sort((a, b) => b.mtime - a.mtime);
       return json(res, { total: rows.length, files: rows.slice(0, Number(q.get('limit') ?? 400)) });
+    }
+    if (url.pathname === '/api' || url.pathname === '/api/') return json(res, API_INDEX);
+    if (url.pathname === '/api/stats') {
+      const model = analyze(loadRaw(db));
+      const { from, to } = { from: q.get('from') ?? '', to: q.get('to') ?? '9999' };
+      const posts = pickPosts(model, q).filter((p) => p.state === (q.get('state') ?? 'PUBLISHED') && p.history.length);
+      const snapshots = posts.flatMap((p) => pivot(p.history).map((s) => ({
+        post_id: p.id, account: p.account, provider: p.provider, published_at: p.publishDate, snapshot_at: s.at,
+        views: s.views ?? null, reach: s.reach ?? null, likes: s.likes ?? null, comments: s.comments ?? null, shares: s.shares ?? null, saves: s.saves ?? null,
+      }))).filter((s) => s.snapshot_at.slice(0, 10) >= from.slice(0, 10) && s.snapshot_at.slice(0, 10) <= to.slice(0, 10));
+      const view = q.get('view') ?? 'posts';
+      let data;
+      if (view === 'snapshots') data = snapshots;
+      else if (view === 'daily') data = dailyTotals(snapshots);
+      else data = posts.map((p) => ({
+        id: p.id, account: p.account, provider: p.provider, published_at: p.publishDate, url: p.releaseUrl,
+        caption: p.content.replace(/<\/p>\s*<p>/g, '\n').replace(/<[^>]+>/g, '').trim().slice(0, 160), local_files: p.localFiles, flags: p.flags, latest: p.metrics,
+        history: snapshots.filter((s) => s.post_id === p.id).map(({ post_id, account, provider, published_at, ...rest }) => rest),
+      }));
+      if (q.get('format') === 'csv') {
+        const cols = Object.keys(data[0] ?? {});
+        const cell = (v) => (v == null ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v);
+        res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end([cols.join(','), ...data.map((r) => cols.map((c) => cell(typeof r[c] === 'object' ? JSON.stringify(r[c]) : r[c])).join(','))].join('\n'));
+      }
+      return json(res, { view, count: data.length, generated_at: new Date().toISOString(), data });
     }
     if (url.pathname === '/api/sync') {
       if (req.method === 'POST') {

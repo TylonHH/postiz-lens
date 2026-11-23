@@ -85,6 +85,25 @@ Posts that disappear from Postiz are hidden from the dashboard on the next sync.
 - Lens is meant to run on the machine that holds your video files. Hosting it on a server (for example CapRover) only makes sense if that server can read the same folders.
 - Postiz rate limits are respected: `429` responses are retried after `Retry-After`, and analytics calls per sync are capped (`MAX_STATS_PER_SYNC`).
 
+## API for scripts and AI assistants
+
+Everything the dashboard shows is available as read-only JSON. `GET /api` lists all endpoints. The most useful one is the metric history:
+
+```bash
+# Per post, with its metric history (default)
+curl "http://127.0.0.1:4747/api/stats?account=<channel-id>"
+
+# Flat rows, one per post and snapshot, as CSV (spreadsheets, pandas, BI tools)
+curl "http://127.0.0.1:4747/api/stats?view=snapshots&format=csv"
+
+# Daily totals across all posts, cumulative over time
+curl "http://127.0.0.1:4747/api/stats?view=daily&from=2026-11-01"
+```
+
+Channel ids come from `GET /api/state`. Parameters: `account`, `state` (default `PUBLISHED`), `from` / `to` (`YYYY-MM-DD`, applied to the snapshot date), `q`, `flag`, `view` (`posts`, `snapshots`, `daily`) and `format` (`json`, `csv`). Metrics are cumulative per snapshot: `views`, `reach`, `likes`, `comments`, `shares`, `saves`; `null` means the platform returned nothing.
+
+To let an AI assistant use it, point it at `http://127.0.0.1:4747/api` and tell it to read that index first. The server only listens on `127.0.0.1`, so the assistant has to run on the same machine. There is no authentication, so do not bind it to a public address (`HOST`) without a reverse proxy that adds one.
+
 ## Privacy and security
 
 - Read-only. Lens never creates, edits or deletes anything in Postiz.
